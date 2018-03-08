@@ -11,8 +11,6 @@ def bbox_overlaps(boxes, query_boxes):
     '''
     N = boxes.shape[0]
     K = query_boxes.shape[0]
-    print np.shape(boxes)
-    print np.shape(query_boxes)
     overlaps = np.zeros((N, K), dtype=np.float32)
     for k in range(K):
         box_area = ((query_boxes[k, 2] - query_boxes[k, 0] + 1) * (query_boxes[k, 3] - query_boxes[k, 1] + 1))

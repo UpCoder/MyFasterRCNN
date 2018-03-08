@@ -29,6 +29,9 @@ def _modified_smooth_l1(sigma, bbox_pred, bbox_targets, bbox_inside_weights, bbo
 def do_reshape(input, d, name):
     input_shape = tf.shape(input)
     if name == 'rpn_cls_prob_reshape':
+        # the shape of input is N, W/2*18, H, C
+        # the shape of mid is N, 18, W, H
+        # the shape of output is N, W, H, 18
         return tf.transpose(tf.reshape(tf.transpose(input, [0, 3, 1, 2]), [input_shape[0],
                                                                            int(d), tf.cast(
                 tf.cast(input_shape[1], tf.float32) / tf.cast(d, tf.float32) * tf.cast(input_shape[3], tf.float32),
@@ -75,3 +78,29 @@ def do_upconv(x, layer_name, kernel_size, filter_size, output_shape, stride_size
         if activation_method is not None:
             output = activation_method(output)
     return output
+
+
+def do_fc(x, layer_name, output_node, relu=True, trainable=True):
+    with tf.variable_scope(layer_name):
+        if isinstance(x, tuple):
+            x = x[0]
+        input_shape = x.get_shape()
+        if input_shape.ndims == 4:
+            dim = 1
+            for d in input_shape[1:].as_list():
+                dim *= d
+            feed_in = tf.reshape(x, [-1, dim])
+        else:
+            feed_in, dim = (x, int(input_shape[-1]))
+        if layer_name == 'bbox_pred':
+            init_weights = tf.truncated_normal_initializer(0.0, stddev=0.001)
+            init_biases = tf.constant_initializer(0.0)
+        else:
+            init_weights = tf.truncated_normal_initializer(0.0, stddev=0.01)
+            init_biases = tf.constant_initializer(0.0)
+        weights = tf.get_variable('weights', [dim, output_node], initializer=init_weights, trainable=trainable)
+        bias = tf.get_variable('bias', [output_node], initializer=init_biases, trainable=trainable)
+
+        op = tf.nn.relu_layer if relu else tf.nn.xw_plus_b
+        fc = op(feed_in, weights, bias, name=layer_name)
+        return fc
