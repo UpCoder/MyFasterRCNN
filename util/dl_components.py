@@ -1,8 +1,9 @@
 import tensorflow as tf
+import numpy as np
 
 
-def get_weights(name, shape, initializer):
-    return tf.get_variable(name, dtype=tf.float32, shape=shape, initializer=initializer)
+def get_weights(name, shape, initializer, trainable):
+    return tf.get_variable(name, dtype=tf.float32, shape=shape, initializer=initializer, trainable=trainable)
 
 
 def _modified_smooth_l1(sigma, bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights):
@@ -44,12 +45,13 @@ def do_reshape(input, d, name):
                             [0, 2, 3, 1], name=name)
 
 
-def do_conv(x, layer_name, kernel_size, filter_size, stride_size, padding='SAME', activation_method=None):
+def do_conv(x, layer_name, kernel_size, filter_size, stride_size, padding='SAME', activation_method=None, trainable=True, weights_initializer=tf.truncated_normal_initializer(0.0, stddev=0.01)):
     with tf.variable_scope(layer_name):
         in_shape = x.get_shape().as_list()
+        # initializer = tf.contrib.layers.xavier_initializer()
         weights = get_weights('weights', shape=[kernel_size[0], kernel_size[1], in_shape[-1], filter_size],
-                              initializer=tf.contrib.layers.xavier_initializer())
-        bias = get_weights('bias', shape=[filter_size], initializer=tf.constant_initializer(value=0.0))
+                              initializer=weights_initializer, trainable=trainable)
+        bias = get_weights('bias', shape=[filter_size], initializer=tf.constant_initializer(value=0.0), trainable=trainable)
         output = tf.nn.conv2d(x, filter=weights,
                               strides=[1, stride_size[0], stride_size[1], 1], padding=padding)
         output = tf.nn.bias_add(output, bias)
@@ -104,3 +106,22 @@ def do_fc(x, layer_name, output_node, relu=True, trainable=True):
         op = tf.nn.relu_layer if relu else tf.nn.xw_plus_b
         fc = op(feed_in, weights, bias, name=layer_name)
         return fc
+
+
+def load(data_path, session, saver, ignore_missing=False):
+    if data_path.endswith('.ckpt'):
+        saver.restore(session, data_path)
+    else:
+        data_dict = np.load(data_path).item()
+        for key in data_dict:
+            with tf.variable_scope(key, reuse=True):
+                for subkey in data_dict[key]:
+                    try:
+                        var = tf.get_variable(subkey)
+                        session.run(var.assign(data_dict[key][subkey]))
+                        print "assign pretrain model "+subkey+ " to "+key
+                    except ValueError:
+                        print "ignore "+key
+                        if not ignore_missing:
+
+                            raise

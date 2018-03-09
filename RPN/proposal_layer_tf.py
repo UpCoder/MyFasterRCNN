@@ -94,11 +94,8 @@ def proposal_layer(rpn_cls_prob_reshape,rpn_bbox_pred,im_info,cfg_key,_feat_stri
     # reshape to (K*A, 4) shifted anchors
     A = _num_anchors
     K = shifts.shape[0]
-    print np.shape(shifts), A, K
-    print np.shape(shifts.reshape((1, K, 4)).transpose((1, 0, 2))), np.shape(_anchors.reshape((1, A, 4)))
     anchors = _anchors.reshape((1, A, 4)) + \
               shifts.reshape((1, K, 4)).transpose((1, 0, 2))
-    print np.shape(anchors)
     # 上面的操作其实是将features map的坐标映射到原图中的位置，方便计算IoU
     anchors = anchors.reshape((K * A, 4))
 
@@ -121,9 +118,7 @@ def proposal_layer(rpn_cls_prob_reshape,rpn_bbox_pred,im_info,cfg_key,_feat_stri
     # Convert anchors into proposals via bbox transformations
     # 所以说anchor和bounding box还是有一定区别的，对anchor进行一定的放缩处理后才是proposal 也就是bounding box
     # 至于放缩的系数是bbox_deltas 预测得到的
-    print 'point 0', np.shape(anchors), np.shape(bbox_deltas)
     proposals = bbox_transform_inv(anchors, bbox_deltas)
-    print 'point 1', np.shape(proposals)
     # 2. clip predicted boxes to image，将proposal切割成合法尺寸
     proposals = clip_boxes(proposals, im_info[:2])
 

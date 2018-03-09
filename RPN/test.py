@@ -14,7 +14,7 @@ if __name__ == '__main__':
     data_tensor = tf.placeholder(tf.float32, [None, None, None, 3], name='x-input')
     input_gt_box_tensor = tf.placeholder(tf.float32, [None, 5], name='gt_box_input')
     input_im_info_tensor = tf.placeholder(tf.float32, [None, 3], name='im_info_input')
-    rpn_data, roi_data, rpn_cls_score_reshape, rpn_bbox_pred, conv5_3= vgg16(
+    rpn_data, roi_data, rpn_cls_score_reshape, rpn_bbox_pred, conv5_3, cls_score, cls_pred, bbox_pred = vgg16(
         data_tensor, input_gt_box_tensor, input_im_info_tensor)
     model_path = '/home/give/PycharmProjects/MyFasterRCNN/parameters'
     from lib.fast_rcnn.config import cfg_from_file, cfg_from_list
@@ -39,13 +39,20 @@ if __name__ == '__main__':
         saver = tf.train.Saver()
         ckpt = tf.train.get_checkpoint_state(model_path)
         if ckpt and ckpt.model_checkpoint_path:
+            print 'load model from ', ckpt.model_checkpoint_path
             saver.restore(sess, ckpt.model_checkpoint_path)
         print blobs.keys()
         print np.shape(blobs['gt_boxes'])
-        rpn_rois_values = sess.run(roi_data[0], feed_dict={
+        rpn_rois_values, cls_pred_value, bbox_pred_value = sess.run([roi_data[0], cls_score, bbox_pred], feed_dict={
             data_tensor: blobs['data'],
             input_im_info_tensor: blobs['im_info'],
             input_gt_box_tensor: blobs['gt_boxes']
         })
         print np.shape(rpn_rois_values)
+        print np.shape(cls_pred_value), np.shape(bbox_pred_value)
+        print cls_pred_value
+        inds = np.where(np.argmax(cls_pred_value, axis=1) != 0)
+        print np.argmax(cls_pred_value, axis=1)
+        print inds
         draw_rects_image(blobs['data'], rpn_rois_values[:, 0:4])
+        draw_rects_image(blobs['data'], rpn_rois_values[inds, 0:4])

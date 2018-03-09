@@ -117,7 +117,6 @@ def _sample_rois(all_rois, gt_boxes, fg_rois_per_image, rois_per_image, num_clas
     examples.
     """
     # overlaps: (rois x gt_boxes)
-    print np.shape(all_rois[:, 1:5])
     # notice:
     # the shape of overlap is N,K. And N is the number of proposal(include pred and gt), K is the number of gt
     overlaps = bbox_overlaps(
@@ -154,11 +153,8 @@ def _sample_rois(all_rois, gt_boxes, fg_rois_per_image, rois_per_image, num_clas
     # Clamp labels for the background RoIs to 0
     labels[fg_rois_per_this_image:] = 0
     rois = all_rois[keep_inds]
-    print 'start 2-1', np.shape(rois), np.shape(gt_boxes), np.shape(gt_boxes[gt_assignment[keep_inds], :4])
     bbox_target_data = _compute_targets(
         rois[:, 1:5], gt_boxes[gt_assignment[keep_inds], :4], labels)
-    print 'start 2-2', np.shape(bbox_target_data), num_classes
     bbox_targets, bbox_inside_weights = \
         _get_bbox_regression_labels(bbox_target_data, num_classes)
-    print 'start 2-3'
     return labels, rois, bbox_targets, bbox_inside_weights

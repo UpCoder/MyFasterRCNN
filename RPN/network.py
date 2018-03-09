@@ -5,6 +5,7 @@ from anchor_target import anchor_target_layer
 from proposal_layer_tf import proposal_layer
 from proposal_target_layer_tf import proposal_target_layer as proposal_target_layer_py
 from lib.roi_pooling_layer import roi_pooling_op
+from roi_pooling.roi_pooling_ops import roi_pooling
 
 _feat_stride = [16,]
 anchor_scales = [8, 16, 32]
@@ -21,11 +22,11 @@ def softmax(input, name):
 
 def vgg16(input_image_tensor, input_gt_box_tensor, input_im_info_tensor, is_training=True):
     # extract feature map
-    conv1_1 = do_conv(input_image_tensor, 'conv1_1', [3, 3], 64, [1, 1], activation_method=tf.nn.relu)
-    conv1_2 = do_conv(conv1_1, 'conv1_2', [3, 3], 64, [1, 1], activation_method=tf.nn.relu)
+    conv1_1 = do_conv(input_image_tensor, 'conv1_1', [3, 3], 64, [1, 1], activation_method=tf.nn.relu, trainable=False)
+    conv1_2 = do_conv(conv1_1, 'conv1_2', [3, 3], 64, [1, 1], activation_method=tf.nn.relu, trainable=False)
     pool1 = do_maxpooling(conv1_2, padding='VALID', layer_name='pool1', kernel_size=[2, 2], stride_size=[2, 2])
-    conv2_1 = do_conv(pool1, 'conv2_1', [3, 3], 128, [1, 1], activation_method=tf.nn.relu)
-    conv2_2 = do_conv(conv2_1, 'conv2_2', [3, 3], 128, [1, 1], activation_method=tf.nn.relu)
+    conv2_1 = do_conv(pool1, 'conv2_1', [3, 3], 128, [1, 1], activation_method=tf.nn.relu, trainable=False)
+    conv2_2 = do_conv(conv2_1, 'conv2_2', [3, 3], 128, [1, 1], activation_method=tf.nn.relu, trainable=False)
     pool2 = do_maxpooling(conv2_2, layer_name='pool2', padding='VALID', kernel_size=[2, 2], stride_size=[2, 2])
     conv3_1 = do_conv(pool2, 'conv3_1', kernel_size=[3, 3], filter_size=256, stride_size=[1, 1],
                       activation_method=tf.nn.relu)
@@ -102,8 +103,12 @@ def vgg16(input_image_tensor, input_gt_box_tensor, input_im_info_tensor, is_trai
     roi_data.append(bbox_outside_weights)
 
     # ======R-CNN===========
-    print conv5_3.get_shape(), rois.get_shape()
-    roi_pool = roi_pooling_op.roi_pool(conv5_3, rois, 7, 7, 1.0/16, name='roi_pool')[0]
+    print conv5_3, rois
+    print conv5_3.get_shape(), rois.get_shape(), tf.cast(tf.multiply(rois, 1.0/16.0)[:, 1:], tf.int32).get_shape()
+    # roi_pool = roi_pooling_op.roi_pool(conv5_3, tf.cast(rois, tf.float32), 7, 7, 1.0/16, name='roi_pool')[0]
+    # roi_pool = roi_pooling(conv5_3, tf.cast(tf.multiply(rois, 1.0/16.0)[:, 1:], tf.int32), 7, 7)
+    roi_pool = tf.image.crop_and_resize(conv5_3, tf.multiply(rois, 1.0 / 16.0)[:, 1:],
+                                        tf.cast(rois[:, 0], tf.int32), [7, 7])
     # roi_pool.set_shape([None, 7, 7, 512])
     print roi_pool.get_shape()
 
@@ -118,4 +123,4 @@ def vgg16(input_image_tensor, input_gt_box_tensor, input_im_info_tensor, is_trai
     cls_prob = tf.nn.softmax(cls_score, name='cls_prob')
     # 预测每个proposal的坐标
     bbox_pred = do_fc(fc2, 'bbox_pred', n_classes*4, relu=False)
-    return rpn_data, roi_data, rpn_cls_score_reshape, rpn_bbox_pred, conv5_3, cls_score, bbox_pred
+    return rpn_data, roi_data, rpn_cls_score_reshape, rpn_bbox_pred, conv5_3, cls_score, cls_prob, bbox_pred

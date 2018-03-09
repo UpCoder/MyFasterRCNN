@@ -1,7 +1,7 @@
 import tensorflow as tf
 from lib.fast_rcnn.config import cfg
 import os
-from util.dl_components import _modified_smooth_l1
+from util.dl_components import _modified_smooth_l1, load
 import argparse
 import sys
 from network import vgg16
@@ -49,7 +49,7 @@ def parse_args():
     return args
 
 
-def train(rpn_data, roi_data,rpn_cls_score_reshape, rpn_bbox_pred, feature_map, cls_score, bbox_pred, input_image_tensor, input_gt_box_tensor, input_im_info_tensor):
+def train(rpn_data, roi_data,rpn_cls_score_reshape, rpn_bbox_pred, feature_map, cls_score, bbox_pred, input_image_tensor, input_gt_box_tensor, input_im_info_tensor, pretrain_model=None):
     output_dir = '/home/give/PycharmProjects/MyFasterRCNN/parameters'
     saver = tf.train.Saver(max_to_keep=5)
     # RPN
@@ -82,7 +82,7 @@ def train(rpn_data, roi_data,rpn_cls_score_reshape, rpn_bbox_pred, feature_map, 
 
     global_step = tf.Variable(0, trainable=False)
     lr = tf.train.exponential_decay(cfg.TRAIN.LEARNING_RATE, global_step,
-                                    cfg.TRAIN.STEPSIZE, 0.1, staircase=True)
+                                    cfg.TRAIN.STEPSIZE, 0.001, staircase=True)
     momentum = cfg.TRAIN.MOMENTUM
     train_op = tf.train.MomentumOptimizer(lr, momentum).minimize(loss, global_step=global_step)
     with tf.Session() as sess:
@@ -102,28 +102,30 @@ def train(rpn_data, roi_data,rpn_cls_score_reshape, rpn_bbox_pred, feature_map, 
         roidb = filter_roidb(roidb)
         bbox_means, bbox_stds = rdl_roidb.add_bbox_regression_targets(roidb)
         data_layer = get_data_layer(roidb, imdb.num_classes)
-        blobs = data_layer.forward()
-        for key in blobs.keys():
-            print key, np.shape(blobs[key])
-            if key != 'data':
-                print blobs[key]
         init_op = tf.global_variables_initializer()
         sess.run(init_op)
+        if pretrain_model is not None:
+            print ('Loading pretrained model '
+                   'weights from {:s}').format(pretrain_model)
+            load(pretrain_model, sess, saver, True)
         for iter_index in range(args.max_iters):
-            _, rpn_labels_value, rpn_bbox_targets_value, rpn_bbox_inside_weights_value, rpn_bbox_outside_weights_value = sess.run(
-                [train_op, rpn_data[0], rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights], feed_dict={
+            blobs = data_layer.forward()
+            # blobs keys include: data, gt_boxesm im_info
+            _, rpn_bbox_targets_value, rpn_bbox_inside_weights_value, rpn_bbox_outside_weights_value = sess.run(
+                [train_op, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights], feed_dict={
                     input_image_tensor: blobs['data'],
                     input_gt_box_tensor: blobs['gt_boxes'],
                     input_im_info_tensor: blobs['im_info']
                 })
-            conv5_3_value, loss_value, rpn_cross_entropy_value, rpn_loss_box_value = sess.run([feature_map, loss, rpn_cross_entropy, rpn_loss_box], feed_dict={
+            rpn_label_value, loss_value, loss_box_value, cross_entropy_value, rpn_cross_entropy_value, rpn_loss_box_value = sess.run([rpn_label, loss, loss_box, cross_entropy,  rpn_cross_entropy, rpn_loss_box], feed_dict={
                 input_image_tensor: blobs['data'],
                 input_gt_box_tensor: blobs['gt_boxes'],
                 input_im_info_tensor: blobs['im_info']
             })
-            if iter_index % 1000 == 0:
+            if iter_index % 100 == 0:
                 print 'iter: %d / %d' % (iter_index, args.max_iters)
-                print 'total loss: %.4f, rpn cross entropy: %.4f,  rpn_loss_box: %.4f' % (loss_value, rpn_cross_entropy_value, rpn_loss_box_value)
+                print 'total loss: %.4f, rpn cross entropy: %.4f,  rpn_loss_box: %.4f, cross entroopy: %.4f, loss box: %.4f' % (loss_value, rpn_cross_entropy_value, rpn_loss_box_value, cross_entropy_value, loss_box_value)
+                # print np.shape(rpn_label_value), rpn_label_value
                 if iter_index == 0:
                     continue
                 infix = ('_' + cfg.TRAIN.SNAPSHOT_INFIX
@@ -138,9 +140,10 @@ if __name__ == '__main__':
     data_tensor = tf.placeholder(tf.float32, [None, None, None, 3], name='x-input')
     input_gt_box_tensor = tf.placeholder(tf.float32, [None, 5], name='gt_box_input')
     input_im_info_tensor = tf.placeholder(tf.float32, [None, 3], name='im_info_input')
-    rpn_data, roi_data, rpn_cls_score_reshape, rpn_bbox_pred, conv5_3, cls_score, bbox_pred = vgg16(data_tensor,
+    rpn_data, roi_data, rpn_cls_score_reshape, rpn_bbox_pred, conv5_3, cls_score, cls_pred, bbox_pred = vgg16(data_tensor,
                                                                                                    input_gt_box_tensor,
                                                                                                    input_im_info_tensor)
     train(rpn_data, roi_data, rpn_cls_score_reshape, rpn_bbox_pred, conv5_3, cls_score, bbox_pred, data_tensor,
           input_gt_box_tensor,
-          input_im_info_tensor)
+          input_im_info_tensor,
+          '/home/give/Game/OCR/Papers-code/Faster-RCNN_TF-master/data/pretrain_model/VGG_imagenet.npy')
